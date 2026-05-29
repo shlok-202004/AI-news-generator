@@ -9,6 +9,8 @@ OPENROUTER_API_KEY    = os.getenv("OPENROUTER_API_KEY")
 GEMINI_API_KEY        = os.getenv("GEMINI_API_KEY")
 GNEWS_API_KEY         = os.getenv("GNEWS_API_KEY")
 DISCORD_WEBHOOK_URL   = os.getenv("DISCORD_WEBHOOK_URL")
+DISCORD_BOT_TOKEN     = os.getenv("DISCORD_BOT_TOKEN")      # optional — only needed for slash commands
+DISCORD_CHANNEL_ID    = os.getenv("DISCORD_CHANNEL_ID")     # channel where scheduled briefing is posted
 
 # ── Sanity check at import time ────────────────────────────────────────────────
 _REQUIRED = {

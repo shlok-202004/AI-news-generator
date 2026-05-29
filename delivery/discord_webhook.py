@@ -52,7 +52,7 @@ def _parse_section(raw: str) -> tuple[str, str, str]:
     return header, big_picture, stories
 
 
-def _build_embeds(sections: list[str]) -> list[dict]:
+def build_embeds(sections: list[str]) -> list[dict]:
     ist = timezone(timedelta(hours=5, minutes=30))
     now = datetime.now(ist)
     date_str = now.strftime("%A, %d %B %Y")
@@ -115,7 +115,7 @@ def send_briefing(sections: list[str], dry_run: bool = False) -> None:
     Discord allows max 10 embeds per message — we batch accordingly.
     If dry_run=True, prints to stdout instead.
     """
-    embeds = _build_embeds(sections)
+    embeds = build_embeds(sections)
 
     if dry_run:
         print("\n" + "═" * 64)

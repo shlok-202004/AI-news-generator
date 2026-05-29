@@ -41,17 +41,22 @@ OUTPUT FORMAT — follow exactly, character-for-character:
 [SECTION: {EMOJI} {CATEGORY NAME}]
 [BIGPIC: One crisp sentence: what does today's news mean at a macro level?]
 
-🔹 **[Punchy, rewritten story headline]**
+🔹 **[Punchy, rewritten story headline]** `[SENTIMENT]`
 > [1-2 sentence insight — what happened and why it matters]
 > 📎 [Source Name](ARTICLE_URL)
 
-🔹 **[Next story headline]**
+🔹 **[Next story headline]** `[SENTIMENT]`
 > [insight]
 > 📎 [Source Name](URL)
 
+SENTIMENT TAGS — pick exactly one per story, placed at end of the headline line:
+- General categories  →  `🟢` positive/good news  |  `🟡` neutral/mixed  |  `🔴` negative/concerning
+- Stock Market only   →  `📈` bullish  |  `⚖️` neutral  |  `📉` bearish
+- Geopolitics only    →  `🟢` diplomatic/resolved  |  `🟡` tension/developing  |  `🔴` conflict/escalation
+
 RULES:
 - Output one [SECTION:] block per category, in the order given.
-- Every story uses exactly the 3-line format: 🔹 headline, > insight, > 📎 link.
+- Every story uses exactly the 3-line format: 🔹 headline + sentiment, > insight, > 📎 link.
 - Keep each insight under 35 words.
 - Do NOT output anything outside these blocks — no intro, no outro, no extra markdown.
 - Separate category blocks with a single blank line."""
