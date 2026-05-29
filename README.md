@@ -146,7 +146,7 @@ python delivery/discord_bot.py
 
 > When running the bot, skip `scheduler.py` — the bot handles the 08:00 IST schedule internally.
 
-**Check RSS feed health (no API keys or AI needed):**
+**Check RSS feed health (RSS only — uses no GNews quota or AI calls):**
 ```bash
 python -m fetchers.healthcheck
 ```
