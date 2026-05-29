@@ -41,6 +41,7 @@ from config import DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID, DISCORD_GUILD_ID, CATE
 from delivery.discord_webhook import build_embeds
 from ai.summarizer import CATEGORY_EMOJIS
 from main import build_sections, run_pipeline
+from fetchers.gnews_fetcher import quota_status
 from db.store import (
     init_tables,
     subscribe, unsubscribe, get_subscriptions, get_all_subscriptions,
@@ -279,9 +280,12 @@ async def cmd_mysubs(interaction: discord.Interaction) -> None:
 @tree.command(name="stats", description="See which news categories get the most reactions")
 async def cmd_stats(interaction: discord.Interaction) -> None:
     rows = get_reaction_stats()
+    api_status = quota_status()
+
     if not rows:
         await interaction.response.send_message(
-            "No reaction data yet — reactions are collected from daily briefings.", ephemeral=True
+            f"No reaction data yet — reactions are collected from daily briefings.\n\n-# {api_status}",
+            ephemeral=True,
         )
         return
 
@@ -290,6 +294,8 @@ async def cmd_stats(interaction: discord.Interaction) -> None:
         total = r["thumbs_up"] + r["thumbs_down"]
         pct   = int(r["thumbs_up"] / total * 100) if total else 0
         lines.append(f"**{r['category']}** — 👍 {r['thumbs_up']}  👎 {r['thumbs_down']}  ({pct}% positive)")
+
+    lines.append(f"\n-# {api_status}")
 
     embed = discord.Embed(
         title="📊 News Category Stats",

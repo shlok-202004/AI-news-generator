@@ -64,10 +64,18 @@ def _fetch_filter_scrape(
     gnews_articles = fetch_all_gnews()
     rss_articles   = fetch_all_rss()
     all_articles   = gnews_articles + rss_articles
-    logger.info(
-        "Fetched %d total (GNews: %d, RSS: %d)",
-        len(all_articles), len(gnews_articles), len(rss_articles),
-    )
+
+    if gnews_articles:
+        logger.info(
+            "Fetched %d total (GNews: %d, RSS: %d)",
+            len(all_articles), len(gnews_articles), len(rss_articles),
+        )
+    else:
+        logger.warning(
+            "Running in RSS-only mode (%d articles) — GNews returned nothing "
+            "(quota exhausted or API error).",
+            len(rss_articles),
+        )
 
     if not all_articles:
         raise RuntimeError("No articles fetched — aborting")

@@ -16,6 +16,36 @@ logger = logging.getLogger(__name__)
 
 GNEWS_ENDPOINT = "https://gnews.io/api/v4/search"
 
+# ── Quota tracking ─────────────────────────────────────────────────────────────
+# When a 429/403 is received the timestamp is recorded. Quota resets every 24h
+# on GNews free tier, so we stop all GNews calls until the window expires.
+
+_quota_exceeded_at: datetime | None = None
+
+
+def _quota_exceeded() -> bool:
+    if _quota_exceeded_at is None:
+        return False
+    return (datetime.now(timezone.utc) - _quota_exceeded_at).total_seconds() < 86_400
+
+
+def _mark_quota_exceeded() -> None:
+    global _quota_exceeded_at
+    _quota_exceeded_at = datetime.now(timezone.utc)
+    logger.warning(
+        "GNews daily quota exhausted — switching to RSS-only mode. "
+        "Quota resets in ~24 h (at %s UTC).",
+        (_quota_exceeded_at + timedelta(hours=24)).strftime("%H:%M %d-%b"),
+    )
+
+
+def quota_status() -> str:
+    """Human-readable quota status; used by the Discord bot for /stats."""
+    if not _quota_exceeded():
+        return "GNews API: ✅ available"
+    resets_at = (_quota_exceeded_at + timedelta(hours=24)).strftime("%H:%M UTC %d %b")
+    return f"GNews API: ⚠️ quota exhausted — RSS-only until {resets_at}"
+
 
 @dataclass
 class Article:
@@ -73,15 +103,22 @@ def fetch_gnews(category: str) -> list[Article]:
         "apikey": GNEWS_API_KEY,
     }
 
+    if _quota_exceeded():
+        return []  # already in RSS-only mode; skip silently
+
     try:
         response = httpx.get(GNEWS_ENDPOINT, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
     except httpx.HTTPStatusError as exc:
-        logger.error(
-            "GNews HTTP %s for category '%s': %s",
-            exc.response.status_code, category, exc.response.text[:300],
-        )
+        status = exc.response.status_code
+        if status in (429, 403):
+            _mark_quota_exceeded()
+        else:
+            logger.error(
+                "GNews HTTP %s for category '%s': %s",
+                status, category, exc.response.text[:300],
+            )
         return []
     except Exception as exc:
         logger.error("GNews fetch failed for category '%s': %s", category, exc)
@@ -117,7 +154,11 @@ def fetch_gnews(category: str) -> list[Article]:
 
 
 def fetch_all_gnews() -> list[Article]:
-    """Fetch GNews articles for every configured category, in parallel."""
+    """Fetch GNews articles for every configured category, in parallel.
+    Returns [] immediately if the daily quota is already exhausted."""
+    if _quota_exceeded():
+        logger.warning("GNews quota exhausted — skipping all GNews fetches (RSS-only mode)")
+        return []
     with ThreadPoolExecutor(max_workers=len(CATEGORIES)) as pool:
         results = pool.map(fetch_gnews, CATEGORIES)
     return [a for articles in results for a in articles]
