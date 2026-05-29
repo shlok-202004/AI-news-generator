@@ -140,10 +140,12 @@ async def cmd_news(
     logger.info("/news by %s — %s", interaction.user, cat_label)
     try:
         sections = await asyncio.to_thread(build_sections, cat_val)
-        embeds   = _to_discord_embeds(sections)
-        await interaction.followup.send(embeds=embeds[:10])
-        for i in range(10, len(embeds), 10):
-            await interaction.channel.send(embeds=embeds[i:i+10])
+        # Acknowledge the interaction so Discord doesn't timeout the deferred response
+        await interaction.followup.send(
+            f"📰 **{cat_label}** briefing incoming…", ephemeral=True
+        )
+        # Post to the channel with 👍/👎 reactions so /stats can track engagement
+        await _send_with_reactions(interaction.channel, sections)
     except ValueError as exc:
         await interaction.followup.send(f"⚠️ {exc}", ephemeral=True)
     except Exception as exc:
