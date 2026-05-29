@@ -56,14 +56,19 @@ init_tables()
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
-_CATEGORY_CHOICES = [
-    app_commands.Choice(name="🖥️  Tech",            value="Tech"),
-    app_commands.Choice(name="🤖  AI",               value="AI"),
-    app_commands.Choice(name="📈  Stock Market",     value="Stock Market"),
-    app_commands.Choice(name="🌍  Geopolitics",      value="Geopolitics"),
-    app_commands.Choice(name="🇮🇳  India Politics",  value="India Politics"),
-    app_commands.Choice(name="🎬  Entertainment",    value="Entertainment"),
-]
+async def _category_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    """Autocomplete for category parameters — supports all 28 categories."""
+    return [
+        app_commands.Choice(
+            name=f"{CATEGORY_EMOJIS.get(cat, '📰')}  {cat}",
+            value=cat,
+        )
+        for cat in CATEGORIES
+        if current.lower() in cat.lower()
+    ][:25]
 
 _SECTION_RE = re.compile(r"\[SECTION:\s*(.+?)\]")
 
@@ -129,17 +134,21 @@ tree    = app_commands.CommandTree(client)
 
 @tree.command(name="news", description="Get the latest AI-curated news briefing")
 @app_commands.describe(category="Leave blank for all categories")
-@app_commands.choices(category=_CATEGORY_CHOICES)
+@app_commands.autocomplete(category=_category_autocomplete)
 async def cmd_news(
     interaction: discord.Interaction,
-    category: app_commands.Choice[str] | None = None,
+    category: str | None = None,
 ) -> None:
-    cat_val   = category.value if category else None
-    cat_label = category.name  if category else "all categories"
+    if category and category not in CATEGORIES:
+        await interaction.response.send_message(
+            f"⚠️ Unknown category **{category}**. Start typing to see suggestions.", ephemeral=True
+        )
+        return
+    cat_label = category or "all categories"
     await interaction.response.defer(thinking=True)
     logger.info("/news by %s — %s", interaction.user, cat_label)
     try:
-        sections = await asyncio.to_thread(build_sections, cat_val, None)
+        sections = await asyncio.to_thread(build_sections, category, None)
         # Acknowledge the interaction so Discord doesn't timeout the deferred response
         await interaction.followup.send(
             f"📰 **{cat_label}** briefing incoming…", ephemeral=True
@@ -199,39 +208,52 @@ async def cmd_summary(interaction: discord.Interaction, topic: str) -> None:
 
 @tree.command(name="subscribe", description="Subscribe to daily DMs for a news category")
 @app_commands.describe(category="Category to subscribe to")
-@app_commands.choices(category=_CATEGORY_CHOICES)
+@app_commands.autocomplete(category=_category_autocomplete)
 async def cmd_subscribe(
     interaction: discord.Interaction,
-    category: app_commands.Choice[str],
+    category: str,
 ) -> None:
-    added = subscribe(str(interaction.user.id), category.value)
+    if category not in CATEGORIES:
+        await interaction.response.send_message(
+            f"⚠️ Unknown category **{category}**. Start typing to see suggestions.", ephemeral=True
+        )
+        return
+    emoji = CATEGORY_EMOJIS.get(category, "📰")
+    added = subscribe(str(interaction.user.id), category)
     if added:
         await interaction.response.send_message(
-            f"✅ Subscribed to **{category.name}** — you'll get a daily DM at 08:00 IST.",
+            f"✅ Subscribed to **{emoji} {category}** — you'll get a daily DM at 08:00 IST.",
             ephemeral=True,
         )
     else:
         await interaction.response.send_message(
-            f"ℹ️ You're already subscribed to **{category.name}**.", ephemeral=True
+            f"ℹ️ You're already subscribed to **{emoji} {category}**.", ephemeral=True
         )
 
 
 # ── /unsubscribe ───────────────────────────────────────────────────────────────
 
 @tree.command(name="unsubscribe", description="Unsubscribe from daily DMs for a category")
-@app_commands.choices(category=_CATEGORY_CHOICES)
+@app_commands.describe(category="Category to unsubscribe from")
+@app_commands.autocomplete(category=_category_autocomplete)
 async def cmd_unsubscribe(
     interaction: discord.Interaction,
-    category: app_commands.Choice[str],
+    category: str,
 ) -> None:
-    removed = unsubscribe(str(interaction.user.id), category.value)
+    if category not in CATEGORIES:
+        await interaction.response.send_message(
+            f"⚠️ Unknown category **{category}**. Start typing to see suggestions.", ephemeral=True
+        )
+        return
+    emoji = CATEGORY_EMOJIS.get(category, "📰")
+    removed = unsubscribe(str(interaction.user.id), category)
     if removed:
         await interaction.response.send_message(
-            f"🗑️ Unsubscribed from **{category.name}**.", ephemeral=True
+            f"🗑️ Unsubscribed from **{emoji} {category}**.", ephemeral=True
         )
     else:
         await interaction.response.send_message(
-            f"ℹ️ You weren't subscribed to **{category.name}**.", ephemeral=True
+            f"ℹ️ You weren't subscribed to **{emoji} {category}**.", ephemeral=True
         )
 
 

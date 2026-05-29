@@ -31,12 +31,37 @@ elif AI_PROVIDER.lower() == "gemini":
 
 # ── Category cosmetics ─────────────────────────────────────────────────────────
 CATEGORY_EMOJIS: dict[str, str] = {
-    "Tech":           "🖥️",
-    "AI":             "🤖",
-    "Stock Market":   "📈",
-    "Geopolitics":    "🌍",
-    "India Politics": "🇮🇳",
-    "Entertainment":  "🎬",
+    # Original
+    "Tech":                 "🖥️",
+    "AI":                   "🤖",
+    "Stock Market":         "📈",
+    "Geopolitics":          "🌍",
+    "India Politics":       "🇮🇳",
+    "Entertainment":        "🎬",
+    # Startups & VC
+    "Startups & VC":        "🚀",
+    # Science & Tech
+    "Science & Space":      "🔬",
+    "Cybersecurity":        "🔐",
+    "Automotive & EV":      "🚗",
+    "Gaming":               "🎮",
+    # Health
+    "Health & Medicine":    "🏥",
+    # Politics & World
+    "US Politics":          "🇺🇸",
+    "UK Politics":          "🇬🇧",
+    "Middle East":          "🕌",
+    "China & Asia":         "🏯",
+    "Europe":               "🇪🇺",
+    "Defence & Military":   "⚔️",
+    "Africa":               "🌍",
+    "Latin America":        "🌎",
+    # Lifestyle & Culture
+    "Sports":               "⚽",
+    "Business & Leadership":"💼",
+    "Climate & Environment":"🌱",
+    "Media & Journalism":   "📰",
+    "Education & EdTech":   "🎓",
 }
 
 # ── Prompts ────────────────────────────────────────────────────────────────────

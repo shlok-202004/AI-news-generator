@@ -15,12 +15,33 @@ _BIGPIC_RE  = re.compile(r"^\[BIGPIC:\s*(.+?)\]",  re.MULTILINE)
 
 # Unique left-border color per category
 _CATEGORY_COLORS: dict[str, int] = {
-    "tech":           0x00B4D8,  # cyan
-    "ai":             0x9B59B6,  # purple
-    "stock market":   0x2ECC71,  # green
-    "geopolitics":    0xE74C3C,  # red
-    "india politics": 0xF39C12,  # orange
-    "entertainment":  0xE91E8C,  # pink
+    # Original
+    "tech":                  0x00B4D8,  # cyan
+    "ai":                    0x9B59B6,  # purple
+    "stock market":          0x2ECC71,  # green
+    "geopolitics":           0xE74C3C,  # red
+    "india politics":        0xF39C12,  # orange
+    "entertainment":         0xE91E8C,  # pink
+    # New categories
+    "startups & vc":         0xFF6B35,  # startup orange
+    "science & space":       0x1ABC9C,  # teal
+    "cybersecurity":         0xE74C3C,  # red (threats)
+    "automotive & ev":       0x27AE60,  # green (electric)
+    "gaming":                0x8E44AD,  # violet
+    "health & medicine":     0x3498DB,  # blue
+    "us politics":           0xC0392B,  # dark red
+    "uk politics":           0x2980B9,  # royal blue
+    "middle east":           0xE67E22,  # sand orange
+    "china & asia":          0xC0392B,  # red
+    "europe":                0x2980B9,  # EU blue
+    "defence & military":    0x7F8C8D,  # steel grey
+    "africa":                0xF39C12,  # gold
+    "latin america":         0x16A085,  # teal green
+    "sports":                0x27AE60,  # green
+    "business & leadership": 0x2C3E50,  # dark navy
+    "climate & environment": 0x2ECC71,  # leaf green
+    "media & journalism":    0x95A5A6,  # silver
+    "education & edtech":    0xF1C40F,  # yellow
 }
 _DEFAULT_COLOR = 0x5865F2  # Discord blurple
 
