@@ -224,10 +224,24 @@ def generate_briefing(selected: dict[str, list[Article]]) -> list[str]:
     )
 
     user_prompt = _build_user_prompt(selected)
-    raw_response = _call_ai(user_prompt)
 
-    if not _validate_response(raw_response):
-        logger.error("Validation failed. Raw AI output:\n%s", raw_response[:500])
+    # Retry up to 2 extra times if the AI returns a malformed response
+    _FORMAT_RETRIES = 2
+    raw_response = ""
+    for attempt in range(_FORMAT_RETRIES + 1):
+        raw_response = _call_ai(user_prompt)
+        if _validate_response(raw_response):
+            break
+        if attempt < _FORMAT_RETRIES:
+            logger.warning(
+                "AI response malformed (attempt %d/%d) — retrying…",
+                attempt + 1, _FORMAT_RETRIES + 1,
+            )
+    else:
+        logger.error(
+            "AI response still malformed after %d attempts. Proceeding anyway.\n%s",
+            _FORMAT_RETRIES + 1, raw_response[:500],
+        )
 
     sections = _split_by_category(raw_response)
 

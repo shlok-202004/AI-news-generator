@@ -145,7 +145,14 @@ async def cmd_news(
             f"📰 **{cat_label}** briefing incoming…", ephemeral=True
         )
         # Post to the channel with 👍/👎 reactions so /stats can track engagement
-        await _send_with_reactions(interaction.channel, sections)
+        channel = interaction.channel
+        if channel is None:
+            # Fallback: channel not cached (rare) — send embeds without reactions
+            embeds = _to_discord_embeds(sections)
+            for i in range(0, len(embeds), 10):
+                await interaction.followup.send(embeds=embeds[i:i+10])
+        else:
+            await _send_with_reactions(channel, sections)
     except ValueError as exc:
         await interaction.followup.send(f"⚠️ {exc}", ephemeral=True)
     except Exception as exc:

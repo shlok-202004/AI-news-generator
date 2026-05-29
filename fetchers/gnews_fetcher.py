@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 
@@ -116,11 +117,10 @@ def fetch_gnews(category: str) -> list[Article]:
 
 
 def fetch_all_gnews() -> list[Article]:
-    """Fetch GNews articles for every configured category."""
-    all_articles: list[Article] = []
-    for category in CATEGORIES:
-        all_articles.extend(fetch_gnews(category))
-    return all_articles
+    """Fetch GNews articles for every configured category, in parallel."""
+    with ThreadPoolExecutor(max_workers=len(CATEGORIES)) as pool:
+        results = pool.map(fetch_gnews, CATEGORIES)
+    return [a for articles in results for a in articles]
 
 
 def fetch_topic(query: str, max_results: int = 10, hours: int = 48) -> list[Article]:
