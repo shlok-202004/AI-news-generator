@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 from fetchers import fetch_all_gnews, fetch_all_rss
 from fetchers.scraper import enrich_articles
 from processor import deduplicate, mark_as_seen, rank_and_select
+from processor.trend_tracker import tag_trending
 from ai import generate_briefing
 from delivery import send_briefing
 
@@ -96,6 +97,10 @@ def _fetch_filter_scrape(
     logger.info("Scraping full article text…")
     selected = enrich_articles(selected)
 
+    # Tag trending / returning stories
+    all_selected = [a for arts in selected.values() for a in arts]
+    tag_trending(all_selected)
+
     return selected, unique
 
 
@@ -144,6 +149,7 @@ def run_pipeline(dry_run: bool = False) -> None:
 
     elapsed = (datetime.now(ist) - start).total_seconds()
     logger.info("━━━ Pipeline complete in %.1fs ━━━", elapsed)
+    return sections
 
 
 # ── CLI entrypoint ─────────────────────────────────────────────────────────────

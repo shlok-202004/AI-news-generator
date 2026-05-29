@@ -121,3 +121,48 @@ def fetch_all_gnews() -> list[Article]:
     for category in CATEGORIES:
         all_articles.extend(fetch_gnews(category))
     return all_articles
+
+
+def fetch_topic(query: str, max_results: int = 10, hours: int = 48) -> list[Article]:
+    """
+    Fetch articles about any free-form topic from the last `hours` hours.
+    Used by the /summary slash command.
+    """
+    from_dt = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    params = {
+        "q":      query,
+        "lang":   "en",
+        "max":    max_results,
+        "from":   from_dt,
+        "sortby": "publishedAt",
+        "apikey": GNEWS_API_KEY,
+    }
+    try:
+        response = httpx.get(GNEWS_ENDPOINT, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        logger.error("GNews topic fetch failed for '%s': %s", query, exc)
+        return []
+
+    articles: list[Article] = []
+    for raw in data.get("articles", []):
+        url   = (raw.get("url")   or "").strip()
+        title = (raw.get("title") or "").strip()
+        if not url or not title:
+            continue
+        published_at = _parse_gnews_dt(raw.get("publishedAt"))
+        articles.append(Article(
+            id="",
+            title=title,
+            url=url,
+            source=raw.get("source", {}).get("name", "GNews"),
+            category="_topic",
+            published_at=published_at or datetime.now(timezone.utc),
+            description=raw.get("description") or raw.get("content") or "",
+        ))
+
+    logger.info("GNews topic '%s': fetched %d article(s)", query, len(articles))
+    return articles

@@ -1,9 +1,16 @@
 import logging
 import re
 import time
+import warnings
 
-import google.generativeai as genai
 from openai import OpenAI
+
+# Only import Gemini SDK if actually using it (avoids deprecation spam when on OpenRouter)
+from config import AI_PROVIDER as _AI_PROVIDER
+if _AI_PROVIDER.lower() == "gemini":
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        import google.generativeai as genai
 
 from config import (
     AI_PROVIDER, OPENROUTER_API_KEY, OPENROUTER_MODEL,
@@ -62,6 +69,33 @@ RULES:
 - Separate category blocks with a single blank line."""
 
 
+_DEEP_DIVE_PROMPT = """\
+You are an investigative analyst writing a deep-dive for Discord.
+
+OUTPUT FORMAT (renders in Discord — follow exactly):
+
+**📍 Overview**
+[2-3 sentences: current situation and context]
+
+**📋 Key Developments**
+🔹 **[Development headline]** `[🟢/🟡/🔴]`
+> [2-3 sentence explanation with specifics]
+> 📎 [Source Name](URL)
+
+**🔎 Why It Matters**
+> [1 paragraph: broader significance and who is affected]
+
+**👁️ What to Watch**
+• [Thing to monitor 1]
+• [Thing to monitor 2]
+• [Thing to monitor 3]
+
+RULES:
+- Be analytical, not just descriptive. Use specific facts and numbers.
+- Keep each development under 50 words.
+- Output only the briefing — no intro, no outro."""
+
+
 def _build_user_prompt(selected: dict[str, list[Article]]) -> str:
     lines: list[str] = ["Produce today's daily briefing from the articles below.\n"]
 
@@ -69,14 +103,12 @@ def _build_user_prompt(selected: dict[str, list[Article]]) -> str:
         emoji = CATEGORY_EMOJIS.get(category, "📰")
         lines.append(f"=== {emoji} {category.upper()} ===")
         for i, a in enumerate(articles, 1):
-            desc = a.description[:300].strip()
-            if desc and not desc.endswith("."):
-                desc += "…"
+            desc = a.description[:1500].strip()  # use full scraped text
             lines.append(
                 f"{i}. Title:  {a.title}\n"
                 f"   Source: {a.source}\n"
                 f"   URL:    {a.url}\n"
-                f"   Desc:   {desc or 'N/A'}\n"
+                f"   Content: {desc or 'N/A'}\n"
             )
         lines.append("")
 
@@ -88,18 +120,17 @@ _MAX_RETRIES = 3
 _RETRY_DELAYS = [5, 15, 45]
 
 
-def _call_ai(user_prompt: str) -> str:
+def _call_ai(user_prompt: str, system_prompt: str = _SYSTEM_PROMPT) -> str:
     last_exc: Exception | None = None
 
     for attempt in range(_MAX_RETRIES):
         try:
             if AI_PROVIDER.lower() == "openrouter":
-                return _call_openrouter(user_prompt)
+                return _call_openrouter(user_prompt, system_prompt)
             elif AI_PROVIDER.lower() == "gemini":
-                return _call_gemini(user_prompt)
+                return _call_gemini(user_prompt, system_prompt)
             else:
                 raise ValueError(f"Unknown AI_PROVIDER: {AI_PROVIDER}")
-
         except Exception as exc:
             logger.exception("Error calling AI API")
             last_exc = exc
@@ -111,37 +142,29 @@ def _call_ai(user_prompt: str) -> str:
     raise RuntimeError(f"AI API failed after {_MAX_RETRIES} attempts: {last_exc}")
 
 
-def _call_openrouter(user_prompt: str) -> str:
-    """Call any model via OpenRouter's OpenAI-compatible API."""
+def _call_openrouter(user_prompt: str, system_prompt: str = _SYSTEM_PROMPT) -> str:
     response = _openrouter_client.chat.completions.create(
         model=OPENROUTER_MODEL,
         max_tokens=MAX_SUMMARY_TOKENS,
         messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt},
         ],
     )
     text = response.choices[0].message.content.strip()
-    logger.info(
-        "OpenRouter (%s) responded (%d chars, finish_reason=%s)",
-        OPENROUTER_MODEL, len(text), response.choices[0].finish_reason,
-    )
+    logger.info("OpenRouter responded (%d chars, finish_reason=%s)",
+                len(text), response.choices[0].finish_reason)
     return text
 
 
-def _call_gemini(user_prompt: str) -> str:
-    """Call Gemini API."""
-    full_prompt = f"{_SYSTEM_PROMPT}\n\n{user_prompt}"
+def _call_gemini(user_prompt: str, system_prompt: str = _SYSTEM_PROMPT) -> str:
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
     response = _gemini_client.generate_content(
         full_prompt,
         generation_config=genai.types.GenerationConfig(max_output_tokens=MAX_SUMMARY_TOKENS),
     )
     text = response.text.strip()
-    logger.info(
-        "Gemini responded (%d chars, finish_reason=%s)",
-        len(text),
-        response.candidates[0].finish_reason if response.candidates else "unknown",
-    )
+    logger.info("Gemini responded (%d chars)", len(text))
     return text
 
 
@@ -213,3 +236,19 @@ def generate_briefing(selected: dict[str, list[Article]]) -> list[str]:
 
     logger.info("Briefing split into %d section(s)", len(sections))
     return sections
+
+
+def generate_deep_dive(topic: str, articles: list[Article]) -> str:
+    """Generate a single-topic deep-dive for the /summary command."""
+    lines = [f"Generate a deep-dive on the topic: **{topic}**\n"]
+    for i, a in enumerate(articles, 1):
+        desc = a.description[:1500].strip()
+        lines.append(
+            f"{i}. Title:   {a.title}\n"
+            f"   Source:  {a.source}\n"
+            f"   URL:     {a.url}\n"
+            f"   Content: {desc or 'N/A'}\n"
+        )
+    user_prompt = "\n".join(lines)
+    result = _call_ai(user_prompt, system_prompt=_DEEP_DIVE_PROMPT)
+    return result[:4000]  # Discord embed description limit is 4096

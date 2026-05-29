@@ -1,29 +1,26 @@
 """
 discord_bot.py — Discord bot with slash commands + daily scheduled briefing.
 
-Run instead of scheduler.py when you want slash commands:
-    python -m delivery.discord_bot
-
-Slash commands:
-    /news                   — full briefing (all categories)
-    /news category:Tech     — single category briefing
-
-Requires:
-    DISCORD_BOT_TOKEN  — from discord.com/developers
-    DISCORD_CHANNEL_ID — channel ID where the daily briefing is posted
+Commands:
+    /news [category]       — full or category briefing
+    /summary topic:X       — 48-hour deep dive on any topic
+    /subscribe category:X  — subscribe to daily DMs for a category
+    /unsubscribe category:X
+    /mysubscriptions       — view your active subscriptions
+    /stats                 — reaction engagement leaderboard
 """
 
 import asyncio
+import datetime
 import logging
 import os
+import re
 import sys
-import datetime
 
 import discord
 from discord import app_commands
 from discord.ext import tasks
 
-# ── Logging ────────────────────────────────────────────────────────────────────
 os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -39,62 +36,83 @@ for noisy in ("httpx", "httpcore", "discord.gateway", "discord.client", "trafila
 
 logger = logging.getLogger(__name__)
 
-from config import DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID
+from config import DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID, DISCORD_GUILD_ID
 from delivery.discord_webhook import build_embeds
-from main import build_sections
+from main import build_sections, run_pipeline
+from db.store import (
+    init_tables,
+    subscribe, unsubscribe, get_subscriptions, get_all_subscriptions,
+    record_message, record_reaction, get_reaction_stats,
+)
 
 if not DISCORD_BOT_TOKEN:
-    logger.error("DISCORD_BOT_TOKEN is not set in .env — bot cannot start")
+    logger.error("DISCORD_BOT_TOKEN is not set — bot cannot start")
     sys.exit(1)
 
-if not DISCORD_CHANNEL_ID:
-    logger.warning("DISCORD_CHANNEL_ID not set — scheduled daily briefing disabled")
+init_tables()
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
-# ── Category choices for the slash command ─────────────────────────────────────
 _CATEGORY_CHOICES = [
-    app_commands.Choice(name="🖥️  Tech",           value="Tech"),
-    app_commands.Choice(name="🤖  AI",              value="AI"),
-    app_commands.Choice(name="📈  Stock Market",    value="Stock Market"),
-    app_commands.Choice(name="🌍  Geopolitics",     value="Geopolitics"),
-    app_commands.Choice(name="🇮🇳  India Politics", value="India Politics"),
-    app_commands.Choice(name="🎬  Entertainment",   value="Entertainment"),
+    app_commands.Choice(name="🖥️  Tech",            value="Tech"),
+    app_commands.Choice(name="🤖  AI",               value="AI"),
+    app_commands.Choice(name="📈  Stock Market",     value="Stock Market"),
+    app_commands.Choice(name="🌍  Geopolitics",      value="Geopolitics"),
+    app_commands.Choice(name="🇮🇳  India Politics",  value="India Politics"),
+    app_commands.Choice(name="🎬  Entertainment",    value="Entertainment"),
 ]
 
+_SECTION_RE = re.compile(r"\[SECTION:\s*(.+?)\]")
 
-# ── Embed converter ────────────────────────────────────────────────────────────
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _dict_to_embed(d: dict) -> discord.Embed:
+    embed = discord.Embed(
+        title=d.get("title"),
+        description=d.get("description"),
+        color=d.get("color", 0x5865F2),
+    )
+    if "author" in d:
+        embed.set_author(name=d["author"]["name"])
+    if "timestamp" in d:
+        try:
+            embed.timestamp = datetime.datetime.fromisoformat(d["timestamp"])
+        except (ValueError, TypeError):
+            pass
+    return embed
+
 
 def _to_discord_embeds(sections: list[str]) -> list[discord.Embed]:
-    """Convert briefing sections → list[discord.Embed] for bot sending."""
-    raw_embeds = build_embeds(sections)
-    result: list[discord.Embed] = []
+    return [_dict_to_embed(d) for d in build_embeds(sections)]
 
-    for d in raw_embeds:
-        embed = discord.Embed(
-            title=d.get("title"),
-            description=d.get("description"),
-            color=d.get("color", 0x5865F2),
-        )
-        if "author" in d:
-            embed.set_author(name=d["author"]["name"])
-        if "timestamp" in d:
-            try:
-                embed.timestamp = datetime.datetime.fromisoformat(d["timestamp"])
-            except (ValueError, TypeError):
-                pass
-        result.append(embed)
 
+def _filter_sections(sections: list[str], categories: list[str]) -> list[str]:
+    """Return only sections whose category matches the user's subscriptions."""
+    result = []
+    for s in sections:
+        m = _SECTION_RE.search(s)
+        if m and any(cat.lower() in m.group(1).lower() for cat in categories):
+            result.append(s)
     return result
 
 
-async def _send_embeds(
-    target: discord.TextChannel | discord.Webhook,
-    embeds: list[discord.Embed],
+async def _send_with_reactions(
+    channel: discord.TextChannel, sections: list[str]
 ) -> None:
-    """Send embeds in batches of 10 (Discord limit)."""
-    for i in range(0, len(embeds), 10):
-        await target.send(embeds=embeds[i : i + 10])
+    """Send each category embed as its own message and add 👍👎 reactions."""
+    raw_embeds = build_embeds(sections)
+    for d in raw_embeds:
+        embed = _dict_to_embed(d)
+        msg   = await channel.send(embed=embed)
+        if "author" in d:                          # category embed only
+            category = d["author"]["name"]
+            record_message(str(msg.id), category)
+            try:
+                await msg.add_reaction("👍")
+                await msg.add_reaction("👎")
+            except discord.HTTPException:
+                pass
 
 
 # ── Bot setup ──────────────────────────────────────────────────────────────────
@@ -104,39 +122,161 @@ client  = discord.Client(intents=intents)
 tree    = app_commands.CommandTree(client)
 
 
-# ── Slash command: /news ───────────────────────────────────────────────────────
+# ── /news ──────────────────────────────────────────────────────────────────────
 
 @tree.command(name="news", description="Get the latest AI-curated news briefing")
 @app_commands.describe(category="Leave blank for all categories")
 @app_commands.choices(category=_CATEGORY_CHOICES)
-async def news_command(
+async def cmd_news(
     interaction: discord.Interaction,
     category: app_commands.Choice[str] | None = None,
 ) -> None:
-    cat_value = category.value if category else None
+    cat_val   = category.value if category else None
     cat_label = category.name  if category else "all categories"
-
     await interaction.response.defer(thinking=True)
-    logger.info("/news called by %s — category: %s", interaction.user, cat_label)
-
+    logger.info("/news by %s — %s", interaction.user, cat_label)
     try:
-        sections = await asyncio.to_thread(build_sections, cat_value)
+        sections = await asyncio.to_thread(build_sections, cat_val)
         embeds   = _to_discord_embeds(sections)
-        # Send first batch as followup, rest as separate messages
-        first_batch = embeds[:10]
-        await interaction.followup.send(embeds=first_batch)
+        await interaction.followup.send(embeds=embeds[:10])
         for i in range(10, len(embeds), 10):
-            await interaction.channel.send(embeds=embeds[i : i + 10])
-
-        logger.info("/news delivered %d embed(s) for %s", len(embeds), cat_label)
-
+            await interaction.channel.send(embeds=embeds[i:i+10])
     except ValueError as exc:
         await interaction.followup.send(f"⚠️ {exc}", ephemeral=True)
     except Exception as exc:
-        logger.exception("/news command failed: %s", exc)
-        await interaction.followup.send(
-            "❌ Pipeline failed — check logs for details.", ephemeral=True
+        logger.exception("/news failed: %s", exc)
+        await interaction.followup.send("❌ Pipeline failed — check logs.", ephemeral=True)
+
+
+# ── /summary ───────────────────────────────────────────────────────────────────
+
+@tree.command(name="summary", description="Deep-dive on any topic from the last 48 hours")
+@app_commands.describe(topic="e.g. 'OpenAI', 'India budget', 'Ukraine'")
+async def cmd_summary(interaction: discord.Interaction, topic: str) -> None:
+    await interaction.response.defer(thinking=True)
+    logger.info("/summary by %s — topic: %s", interaction.user, topic)
+    try:
+        from fetchers.gnews_fetcher import fetch_topic
+        from fetchers.scraper import enrich_articles
+        from ai.summarizer import generate_deep_dive
+
+        articles = await asyncio.to_thread(fetch_topic, topic, 10, 48)
+        if not articles:
+            await interaction.followup.send(
+                f"⚠️ No news found for **{topic}** in the last 48 hours.", ephemeral=True
+            )
+            return
+
+        enriched = await asyncio.to_thread(enrich_articles, {"_topic": articles})
+        content  = await asyncio.to_thread(generate_deep_dive, topic, enriched["_topic"])
+
+        embed = discord.Embed(
+            title=f"🔍  Deep Dive: {topic}",
+            description=content,
+            color=0x5865F2,
+            timestamp=datetime.datetime.now(IST),
         )
+        embed.set_footer(text=f"Based on {len(articles)} articles · last 48 hours")
+        await interaction.followup.send(embed=embed)
+    except Exception as exc:
+        logger.exception("/summary failed: %s", exc)
+        await interaction.followup.send("❌ Summary failed — check logs.", ephemeral=True)
+
+
+# ── /subscribe ─────────────────────────────────────────────────────────────────
+
+@tree.command(name="subscribe", description="Subscribe to daily DMs for a news category")
+@app_commands.describe(category="Category to subscribe to")
+@app_commands.choices(category=_CATEGORY_CHOICES)
+async def cmd_subscribe(
+    interaction: discord.Interaction,
+    category: app_commands.Choice[str],
+) -> None:
+    added = subscribe(str(interaction.user.id), category.value)
+    if added:
+        await interaction.response.send_message(
+            f"✅ Subscribed to **{category.name}** — you'll get a daily DM at 08:00 IST.",
+            ephemeral=True,
+        )
+    else:
+        await interaction.response.send_message(
+            f"ℹ️ You're already subscribed to **{category.name}**.", ephemeral=True
+        )
+
+
+# ── /unsubscribe ───────────────────────────────────────────────────────────────
+
+@tree.command(name="unsubscribe", description="Unsubscribe from daily DMs for a category")
+@app_commands.choices(category=_CATEGORY_CHOICES)
+async def cmd_unsubscribe(
+    interaction: discord.Interaction,
+    category: app_commands.Choice[str],
+) -> None:
+    removed = unsubscribe(str(interaction.user.id), category.value)
+    if removed:
+        await interaction.response.send_message(
+            f"🗑️ Unsubscribed from **{category.name}**.", ephemeral=True
+        )
+    else:
+        await interaction.response.send_message(
+            f"ℹ️ You weren't subscribed to **{category.name}**.", ephemeral=True
+        )
+
+
+# ── /mysubscriptions ───────────────────────────────────────────────────────────
+
+@tree.command(name="mysubscriptions", description="See your active category subscriptions")
+async def cmd_mysubs(interaction: discord.Interaction) -> None:
+    cats = get_subscriptions(str(interaction.user.id))
+    if cats:
+        lines = "\n".join(f"• {c}" for c in cats)
+        await interaction.response.send_message(
+            f"📋 **Your subscriptions:**\n{lines}\n\nYou'll receive a DM daily at 08:00 IST.",
+            ephemeral=True,
+        )
+    else:
+        await interaction.response.send_message(
+            "You have no active subscriptions. Use `/subscribe` to add one.", ephemeral=True
+        )
+
+
+# ── /stats ─────────────────────────────────────────────────────────────────────
+
+@tree.command(name="stats", description="See which news categories get the most reactions")
+async def cmd_stats(interaction: discord.Interaction) -> None:
+    rows = get_reaction_stats()
+    if not rows:
+        await interaction.response.send_message(
+            "No reaction data yet — reactions are collected from daily briefings.", ephemeral=True
+        )
+        return
+
+    lines = ["**📊 Category Engagement (all-time)**\n"]
+    for r in rows:
+        total = r["thumbs_up"] + r["thumbs_down"]
+        pct   = int(r["thumbs_up"] / total * 100) if total else 0
+        lines.append(f"**{r['category']}** — 👍 {r['thumbs_up']}  👎 {r['thumbs_down']}  ({pct}% positive)")
+
+    embed = discord.Embed(
+        title="📊 News Category Stats",
+        description="\n".join(lines),
+        color=0x5865F2,
+    )
+    await interaction.response.send_message(embed=embed)
+
+
+# ── Reaction tracking ──────────────────────────────────────────────────────────
+
+@client.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent) -> None:
+    if payload.user_id == client.user.id:
+        return  # ignore bot's own reactions
+    emoji = str(payload.emoji)
+    if emoji not in ("👍", "👎"):
+        return
+    category = record_reaction(str(payload.message_id), emoji)
+    if category:
+        logger.debug("Reaction %s on %s (%s)", emoji, payload.message_id, category)
 
 
 # ── Daily scheduled briefing ───────────────────────────────────────────────────
@@ -145,7 +285,6 @@ async def news_command(
 async def daily_briefing() -> None:
     if not DISCORD_CHANNEL_ID:
         return
-
     channel = client.get_channel(int(DISCORD_CHANNEL_ID))
     if not channel:
         logger.error("Daily briefing: channel %s not found", DISCORD_CHANNEL_ID)
@@ -153,12 +292,36 @@ async def daily_briefing() -> None:
 
     logger.info("Running scheduled daily briefing…")
     try:
-        from main import run_pipeline
-        # run_pipeline delivers via webhook AND marks articles as seen
-        await asyncio.to_thread(run_pipeline, False)
-        logger.info("Scheduled briefing delivered ✓")
+        # Run pipeline (fetch → scrape → trend → AI → webhook delivery → mark seen)
+        sections = await asyncio.to_thread(run_pipeline, False)
+
+        # Send with per-category reactions via bot (in addition to webhook)
+        await _send_with_reactions(channel, sections)
+
+        # Personalized DMs
+        subs = get_all_subscriptions()
+        for user_id, categories in subs.items():
+            user_sections = _filter_sections(sections, categories)
+            if not user_sections:
+                continue
+            try:
+                user = await client.fetch_user(int(user_id))
+                dm   = await user.create_dm()
+                header = discord.Embed(
+                    title="📰 Your Personalized Daily Brief",
+                    description="Categories: " + ", ".join(f"**{c}**" for c in categories),
+                    color=0x5865F2,
+                    timestamp=datetime.datetime.now(IST),
+                )
+                await dm.send(embed=header)
+                for embed in _to_discord_embeds(user_sections):
+                    await dm.send(embed=embed)
+            except Exception as exc:
+                logger.warning("Could not DM user %s: %s", user_id, exc)
+
+        logger.info("Daily briefing + DMs delivered ✓")
     except Exception as exc:
-        logger.exception("Scheduled briefing failed: %s", exc)
+        logger.exception("Daily briefing failed: %s", exc)
         await channel.send("❌ Daily briefing pipeline failed — check logs.")
 
 
@@ -166,15 +329,18 @@ async def daily_briefing() -> None:
 
 @client.event
 async def on_ready() -> None:
-    await tree.sync()
+    if DISCORD_GUILD_ID:
+        guild = discord.Object(id=int(DISCORD_GUILD_ID))
+        tree.copy_global_to(guild=guild)
+        await tree.sync(guild=guild)
+        logger.info("Slash commands synced to guild %s (instant)", DISCORD_GUILD_ID)
+    else:
+        await tree.sync()
+        logger.info("Slash commands synced globally (may take up to 1 hour)")
+
     daily_briefing.start()
-    logger.info(
-        "Bot ready as %s — slash commands synced, daily briefing at 08:00 IST",
-        client.user,
-    )
+    logger.info("Bot ready as %s — daily briefing at 08:00 IST", client.user)
 
-
-# ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     client.run(DISCORD_BOT_TOKEN, log_handler=None)
