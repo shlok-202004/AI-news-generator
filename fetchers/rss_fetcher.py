@@ -94,13 +94,19 @@ def fetch_rss_feed(feed_url: str, category: str) -> list[Article]:
     return articles
 
 
-def fetch_all_rss() -> list[Article]:
-    """Fetch RSS feeds for every configured category, in parallel."""
+def fetch_all_rss(categories: list[str] | None = None) -> list[Article]:
+    """Fetch RSS feeds for configured categories, in parallel.
+    Pass `categories` to restrict the fetch to specific category keys."""
+    cat_items = (
+        [(c, CATEGORIES[c]) for c in categories if c in CATEGORIES]
+        if categories is not None
+        else list(CATEGORIES.items())
+    )
     # Flatten every (feed_url, category) pair so feeds across all categories
     # download concurrently rather than one category at a time.
     tasks = [
         (feed_url, category)
-        for category, cfg in CATEGORIES.items()
+        for category, cfg in cat_items
         for feed_url in cfg.get("rss_feeds", [])
     ]
     if not tasks:

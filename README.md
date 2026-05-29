@@ -13,6 +13,8 @@ A daily news briefing pipeline that fetches, deduplicates, ranks, and summarizes
 - **GNews quota fallback** — auto-switches to RSS-only mode on quota exhaustion; self-resets after 24 h
 - **Discord bot** — slash commands with autocomplete, per-category reactions, personalized DMs, weekly digest
 - **Scheduled delivery** — daily briefing at 08:00 IST via built-in bot scheduler
+- **Briefing cache** — repeat `/news` calls serve a cached result (configurable TTL) instead of re-running the pipeline; single-category requests fetch only that category's feeds
+- **Feed health check** — `python -m fetchers.healthcheck` or `/feedhealth` probes every RSS feed and flags broken or empty ones
 
 ## Categories (25)
 
@@ -55,6 +57,7 @@ A daily news briefing pipeline that fetches, deduplicates, ranks, and summarizes
 | `/unsubscribe category:X` | Unsubscribe from a category |
 | `/mysubscriptions` | View your active subscriptions |
 | `/stats` | Reaction leaderboard + live GNews API quota status |
+| `/feedhealth` | Probe all RSS feeds and report which are broken or empty |
 
 > All category commands use **autocomplete** — start typing and Discord suggests matching categories from all 25.
 
@@ -68,7 +71,8 @@ A daily news briefing pipeline that fetches, deduplicates, ranks, and summarizes
 ├── fetchers/
 │   ├── gnews_fetcher.py     # GNews API client, quota tracking + fallback
 │   ├── rss_fetcher.py       # Parallel RSS/Atom feed fetcher (8 workers)
-│   └── scraper.py           # Full-text scraping via trafilatura (6 workers)
+│   ├── scraper.py           # Full-text scraping via trafilatura (6 workers)
+│   └── healthcheck.py       # Probe all RSS feeds, report broken/empty ones
 │
 ├── processor/
 │   ├── deduplicator.py      # URL hash dedup + Jaccard fuzzy title dedup
@@ -116,6 +120,7 @@ cp .env.example .env
 | `DISCORD_BOT_TOKEN` | For slash commands | Discord developer portal |
 | `DISCORD_CHANNEL_ID` | For scheduled bot posts | Channel ID (numeric) |
 | `DISCORD_GUILD_ID` | Recommended | Server ID for instant slash command sync |
+| `BRIEFING_CACHE_TTL_MINUTES` | No | Minutes `/news` serves a cached briefing (default `30`, `0` disables) |
 
 ### 3. Run
 
@@ -141,6 +146,11 @@ python delivery/discord_bot.py
 
 > When running the bot, skip `scheduler.py` — the bot handles the 08:00 IST schedule internally.
 
+**Check RSS feed health (no API keys or AI needed):**
+```bash
+python -m fetchers.healthcheck
+```
+
 ## Pipeline
 
 ```
@@ -159,7 +169,7 @@ RSS feeds ──┘  (parallel, 60+ feeds)
 
 ## GNews Quota & Fallback
 
-The free GNews tier allows **100 requests/day**. With 25 categories each using 1 request, each full pipeline run costs 25 requests (~4 runs/day available).
+The free GNews tier allows **100 requests/day**. With 25 categories each using 1 request, each full pipeline run costs 25 requests (~4 runs/day available). A single-category `/news Tech` costs only **1 request** (scoped fetch), and cached `/news` calls cost **0**.
 
 When the quota is exhausted (HTTP 429/403):
 - The pipeline automatically switches to **RSS-only mode** for the remainder of the day

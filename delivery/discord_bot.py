@@ -9,6 +9,7 @@ Commands:
     /mysubscriptions       — view your active subscriptions
     /stats                 — reaction engagement leaderboard
     /digest                — weekly recap of recurring/trending stories
+    /feedhealth            — probe all RSS feeds and report broken ones
 """
 
 import asyncio
@@ -345,6 +346,50 @@ async def cmd_digest(interaction: discord.Interaction) -> None:
         timestamp=datetime.datetime.now(IST),
     )
     await interaction.response.send_message(embed=embed)
+
+
+# ── /feedhealth ──────────────────────────────────────────────────────────────
+
+@tree.command(name="feedhealth", description="Check which RSS feeds are healthy or broken")
+async def cmd_feedhealth(interaction: discord.Interaction) -> None:
+    await interaction.response.defer(thinking=True)
+    logger.info("/feedhealth by %s", interaction.user)
+    try:
+        from fetchers.healthcheck import check_all_feeds, summarize
+        results = await asyncio.to_thread(check_all_feeds)
+    except Exception as exc:
+        logger.exception("/feedhealth failed: %s", exc)
+        await interaction.followup.send("❌ Feed health check failed — check logs.", ephemeral=True)
+        return
+
+    counts = summarize(results)
+    lines = [
+        f"**{counts['total']} feeds** · ✅ {counts['ok']} ok · "
+        f"⚠️ {counts['empty']} empty · ❌ {counts['error']} error\n"
+    ]
+    problems = [r for r in results if r["status"] != "ok"]
+    if problems:
+        icons = {"empty": "⚠️", "error": "❌"}
+        lines.append("**Needs attention:**")
+        for r in problems:
+            lines.append(
+                f"{icons[r['status']]} `{r['category']}` · {r['domain']} — "
+                f"{r['detail'] or r['status']}"
+            )
+    else:
+        lines.append("All feeds healthy 🎉")
+
+    description = "\n".join(lines)
+    if len(description) > 4096:
+        description = description[:4093] + "…"
+
+    embed = discord.Embed(
+        title="📡 RSS Feed Health",
+        description=description,
+        color=0x2ECC71 if counts["error"] == 0 else 0xE74C3C,
+        timestamp=datetime.datetime.now(IST),
+    )
+    await interaction.followup.send(embed=embed)
 
 
 # ── Reaction tracking ──────────────────────────────────────────────────────────

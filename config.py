@@ -263,3 +263,8 @@ OPENROUTER_MODEL        = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70
 GEMINI_MODEL            = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 TOP_ARTICLES_FOR_AI     = 10   # top N articles per category sent to AI model
 MAX_SUMMARY_TOKENS      = 4096
+
+# ── Briefing cache ─────────────────────────────────────────────────────────────
+# /news serves a cached briefing for this many minutes before regenerating,
+# cutting GNews quota burn and AI latency on repeat calls. Set 0 to disable.
+BRIEFING_CACHE_TTL_MINUTES = int(os.getenv("BRIEFING_CACHE_TTL_MINUTES", "30"))

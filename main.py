@@ -11,6 +11,7 @@ The same functions are imported by scheduler.py and discord_bot.py.
 import argparse
 import logging
 import sys
+import time
 from datetime import datetime, timezone, timedelta
 
 from fetchers import fetch_all_gnews, fetch_all_rss
@@ -60,9 +61,19 @@ def _fetch_filter_scrape(
     limit=None passes all ranked articles to AI (used by /news).
     limit=N caps per category (used by the scheduled pipeline).
     """
+    # Scope the fetch to just the requested category's feeds when possible —
+    # serving /news Tech shouldn't fetch all 25 categories' feeds + GNews calls.
+    from config import CATEGORIES
+    if category:
+        cats = [k for k in CATEGORIES if category.lower() in k.lower()]
+        if not cats:
+            raise ValueError(f"Category '{category}' not found or has no articles today")
+    else:
+        cats = None
+
     # Fetch
-    gnews_articles = fetch_all_gnews()
-    rss_articles   = fetch_all_rss()
+    gnews_articles = fetch_all_gnews(cats)
+    rss_articles   = fetch_all_rss(cats)
     all_articles   = gnews_articles + rss_articles
 
     if gnews_articles:
@@ -88,6 +99,8 @@ def _fetch_filter_scrape(
     # Filter & rank
     selected = rank_and_select(unique, limit=limit)
     if not selected:
+        if category:
+            raise ValueError(f"No articles found for '{category}' today — try again later.")
         raise RuntimeError("Filter returned empty selection")
 
     logger.info(
@@ -115,17 +128,53 @@ def _fetch_filter_scrape(
     return selected, unique
 
 
-def build_sections(category: str | None = None, limit: int | None = None) -> list[str]:
+# ── Briefing cache ──────────────────────────────────────────────────────────
+# In-memory cache so repeat /news calls don't re-run the (slow, quota-hungry)
+# pipeline. Keyed by category+limit; entries expire after the configured TTL.
+_briefing_cache: dict[str, tuple[float, list[str]]] = {}
+
+
+def _cache_get(key: str, ttl_seconds: int) -> list[str] | None:
+    entry = _briefing_cache.get(key)
+    if not entry:
+        return None
+    ts, sections = entry
+    if time.time() - ts > ttl_seconds:
+        return None
+    return sections
+
+
+def build_sections(
+    category: str | None = None,
+    limit: int | None = None,
+    use_cache: bool = True,
+) -> list[str]:
     """
     Run the pipeline up to AI generation and return briefing sections.
     Does NOT deliver or mark articles as seen — safe to call from the bot.
     limit=None sends every fetched article to the AI (used by /news).
     limit=N caps articles per category (used by the scheduler).
+    use_cache=True serves a recent result for the same request if available.
     """
+    from config import AI_PROVIDER, BRIEFING_CACHE_TTL_MINUTES
+    ttl = BRIEFING_CACHE_TTL_MINUTES * 60
+    key = f"{category or '__all__'}:{limit}"
+
+    if use_cache and ttl > 0:
+        cached = _cache_get(key, ttl)
+        if cached is not None:
+            logger.info("Serving '%s' briefing from cache (%d section(s))",
+                        category or "all", len(cached))
+            return cached
+
     selected, _ = _fetch_filter_scrape(category, limit=limit)
-    from config import AI_PROVIDER
     logger.info("Generating briefing with %s…", AI_PROVIDER.upper())
-    return generate_briefing(selected)
+    sections = generate_briefing(selected)
+
+    if use_cache and ttl > 0:
+        _briefing_cache[key] = (time.time(), sections)
+
+    return sections
 
 
 # ── Full pipeline (scheduler entry point) ──────────────────────────────────────

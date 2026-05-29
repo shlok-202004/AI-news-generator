@@ -153,17 +153,22 @@ def fetch_gnews(category: str) -> list[Article]:
     return articles
 
 
-def fetch_all_gnews() -> list[Article]:
-    """Fetch GNews articles for every configured category, in parallel.
+def fetch_all_gnews(categories: list[str] | None = None) -> list[Article]:
+    """Fetch GNews articles for configured categories, in parallel.
+    Pass `categories` to restrict the fetch to specific category keys
+    (used by single-category /news so it doesn't hit all 25).
     Returns [] immediately if the daily quota is already exhausted."""
     if _quota_exceeded():
         logger.warning("GNews quota exhausted — skipping all GNews fetches (RSS-only mode)")
         return []
+    cats = list(categories) if categories is not None else list(CATEGORIES)
+    if not cats:
+        return []
     # Cap concurrency: firing all categories at once can trip GNews' per-second
     # rate limit (429), which we'd misread as daily-quota exhaustion and lock
     # into RSS-only mode for 24h. A modest pool stays fast without the burst.
-    with ThreadPoolExecutor(max_workers=min(len(CATEGORIES), 8)) as pool:
-        results = pool.map(fetch_gnews, CATEGORIES)
+    with ThreadPoolExecutor(max_workers=min(len(cats), 8)) as pool:
+        results = pool.map(fetch_gnews, cats)
     return [a for articles in results for a in articles]
 
 
