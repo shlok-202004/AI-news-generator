@@ -4,11 +4,14 @@ from datetime import datetime, timezone, timedelta
 
 import httpx
 
-from config import DISCORD_WEBHOOK_URL
+from config import DISCORD_WEBHOOK_URL, AI_PROVIDER
 
 logger = logging.getLogger(__name__)
 
-_DISCORD_DESC_LIMIT = 4096
+_DISCORD_DESC_LIMIT  = 4096   # max chars in an embed description
+_DISCORD_TITLE_LIMIT = 256    # max chars in an embed title
+_DISCORD_TOTAL_LIMIT = 6000   # max chars across ALL embeds in one message
+_MAX_EMBEDS_PER_MSG  = 10     # max embeds Discord accepts per message
 
 _SECTION_RE = re.compile(r"^\[SECTION:\s*(.+?)\]", re.MULTILINE)
 _BIGPIC_RE  = re.compile(r"^\[BIGPIC:\s*(.+?)\]",  re.MULTILINE)
@@ -107,22 +110,56 @@ def build_embeds(sections: list[str]) -> list[dict]:
         }
         if big_picture:
             # Big picture sits as the embed title — large, bold, immediately visible
-            embed["title"] = f"💡 {big_picture}"
+            embed["title"] = f"💡 {big_picture}"[:_DISCORD_TITLE_LIMIT]
         if stories:
             embed["description"] = stories
 
         embeds.append(embed)
 
     # ── Footer embed ──────────────────────────────────────────────────────────
+    provider = "Google Gemini" if AI_PROVIDER.lower() == "gemini" else "OpenRouter AI"
     embeds.append({
         "description": (
-            "-# 🤖 Powered by OpenRouter AI  ·  📡 Sources via GNews  ·  "
+            f"-# 🤖 Powered by {provider}  ·  📡 Sources via GNews + RSS  ·  "
             f"📅 {date_str}"
         ),
         "color": 0x2B2D31,
     })
 
     return embeds
+
+
+def _embed_len(embed: dict) -> int:
+    """Count the characters Discord tallies against the 6000-per-message limit."""
+    total = len(embed.get("title", "")) + len(embed.get("description", ""))
+    author = embed.get("author")
+    if author:
+        total += len(author.get("name", ""))
+    return total
+
+
+def _batch_embeds(embeds: list[dict]) -> list[list[dict]]:
+    """
+    Split embeds into Discord-legal batches: each message holds at most
+    10 embeds AND at most 6000 characters across them. With 25 categories a
+    naive 10-per-message split blows past 6000 chars and the send 400s.
+    """
+    batches: list[list[dict]] = []
+    current: list[dict] = []
+    current_len = 0
+    for embed in embeds:
+        elen = _embed_len(embed)
+        if current and (
+            len(current) >= _MAX_EMBEDS_PER_MSG
+            or current_len + elen > _DISCORD_TOTAL_LIMIT
+        ):
+            batches.append(current)
+            current, current_len = [], 0
+        current.append(embed)
+        current_len += elen
+    if current:
+        batches.append(current)
+    return batches
 
 
 def _send_payload(payload: dict) -> None:
@@ -151,11 +188,10 @@ def send_briefing(sections: list[str], dry_run: bool = False) -> None:
         print("\nDRY RUN — nothing sent to Discord")
         return
 
-    # Discord limit: 10 embeds per request
-    _BATCH = 10
-    for i in range(0, len(embeds), _BATCH):
-        batch = embeds[i : i + _BATCH]
+    # Discord limits each message to 10 embeds AND 6000 total characters.
+    batches = _batch_embeds(embeds)
+    for idx, batch in enumerate(batches, 1):
         _send_payload({"embeds": batch})
-        logger.info("Sent embed batch %d/%d", i // _BATCH + 1, -(-len(embeds) // _BATCH))
+        logger.info("Sent embed batch %d/%d", idx, len(batches))
 
     logger.info("Briefing delivered to Discord ✓")

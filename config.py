@@ -55,7 +55,7 @@ CATEGORIES: dict[str, dict] = {
         ],
     },
     "Stock Market": {
-        "gnews_query": "stock market OR equities OR Wall Street OR S&P 500 OR earnings OR IPO OR interest rates OR Federal Reserve OR inflation OR bonds",
+        "gnews_query": "stock market OR equities OR Wall Street OR \"S&P 500\" OR earnings OR IPO OR interest rates OR Federal Reserve OR inflation OR bonds",
         "gnews_lang": "en",
         "rss_feeds": [
             "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US",

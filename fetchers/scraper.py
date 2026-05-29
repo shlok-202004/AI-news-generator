@@ -2,6 +2,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import trafilatura
+from trafilatura.settings import use_config
 
 from fetchers.gnews_fetcher import Article
 
@@ -11,17 +12,22 @@ _MAX_CHARS = 2000   # characters of full text sent to AI
 _TIMEOUT   = 8      # seconds per article fetch
 _WORKERS   = 6      # parallel scrape threads
 
+# trafilatura 2.x takes the per-download timeout via a config object rather than
+# a fetch_url(timeout=...) kwarg. Build one once and reuse it across threads
+# (config is read-only after setup, so sharing it concurrently is safe).
+_TRAFILATURA_CFG = use_config()
+_TRAFILATURA_CFG.set("DEFAULT", "DOWNLOAD_TIMEOUT", str(_TIMEOUT))
+
 
 def _scrape_one(article: Article) -> tuple[Article, bool]:
     try:
-        downloaded = trafilatura.fetch_url(article.url, timeout=_TIMEOUT)
+        downloaded = trafilatura.fetch_url(article.url, config=_TRAFILATURA_CFG)
         if not downloaded:
             return article, False
         text = trafilatura.extract(
             downloaded,
             include_comments=False,
             include_tables=False,
-            no_fallback=False,
         )
         if text and len(text) > 120:
             article.description = text[:_MAX_CHARS].strip()

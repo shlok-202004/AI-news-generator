@@ -61,7 +61,7 @@ async def _category_autocomplete(
     interaction: discord.Interaction,
     current: str,
 ) -> list[app_commands.Choice[str]]:
-    """Autocomplete for category parameters — supports all 28 categories."""
+    """Autocomplete for category parameters — supports all 25 categories."""
     return [
         app_commands.Choice(
             name=f"{CATEGORY_EMOJIS.get(cat, '📰')}  {cat}",
