@@ -139,7 +139,7 @@ async def cmd_news(
     await interaction.response.defer(thinking=True)
     logger.info("/news by %s — %s", interaction.user, cat_label)
     try:
-        sections = await asyncio.to_thread(build_sections, cat_val)
+        sections = await asyncio.to_thread(build_sections, cat_val, None)
         # Acknowledge the interaction so Discord doesn't timeout the deferred response
         await interaction.followup.send(
             f"📰 **{cat_label}** briefing incoming…", ephemeral=True

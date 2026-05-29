@@ -36,7 +36,7 @@ if _MISSING:
 #   rss_feeds    → list of RSS/Atom feed URLs (free, no key needed)
 CATEGORIES: dict[str, dict] = {
     "Tech": {
-        "gnews_query": "technology OR cybersecurity OR Apple OR Google OR Microsoft",
+        "gnews_query": "technology OR software OR hardware OR gadgets OR computing OR semiconductors OR smartphones",
         "gnews_lang": "en",
         "rss_feeds": [
             "https://techcrunch.com/feed/",
@@ -46,7 +46,7 @@ CATEGORIES: dict[str, dict] = {
         ],
     },
     "AI": {
-        "gnews_query": "artificial intelligence OR OpenAI OR LLM OR machine learning",
+        "gnews_query": "artificial intelligence OR machine learning OR large language model OR generative AI OR AI model OR neural network OR AI regulation OR AI research",
         "gnews_lang": "en",
         "rss_feeds": [
             "https://venturebeat.com/category/ai/feed/",
@@ -54,7 +54,7 @@ CATEGORIES: dict[str, dict] = {
         ],
     },
     "Stock Market": {
-        "gnews_query": "stock market OR NASDAQ OR S&P 500 OR Wall Street OR earnings",
+        "gnews_query": "stock market OR equities OR Wall Street OR S&P 500 OR earnings OR IPO OR interest rates OR Federal Reserve OR inflation OR bonds",
         "gnews_lang": "en",
         "rss_feeds": [
             "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US",
@@ -62,7 +62,7 @@ CATEGORIES: dict[str, dict] = {
         ],
     },
     "Geopolitics": {
-        "gnews_query": "geopolitics OR sanctions OR NATO OR diplomacy OR Ukraine",
+        "gnews_query": "geopolitics OR international relations OR diplomacy OR sanctions OR war OR conflict OR treaty OR United Nations OR foreign policy OR military",
         "gnews_lang": "en",
         "rss_feeds": [
             "http://feeds.bbci.co.uk/news/world/rss.xml",
@@ -71,7 +71,7 @@ CATEGORIES: dict[str, dict] = {
         ],
     },
     "India Politics": {
-        "gnews_query": "India politics OR Modi OR BJP OR Indian parliament OR Indian election",
+        "gnews_query": "India OR Indian government OR Modi OR BJP OR Congress party OR Indian parliament OR Indian economy OR Indian election OR Supreme Court India OR Indian foreign policy",
         "gnews_lang": "en",
         "rss_feeds": [
             "https://www.thehindu.com/news/national/feeder/default.rss",
@@ -79,7 +79,7 @@ CATEGORIES: dict[str, dict] = {
         ],
     },
     "Entertainment": {
-        "gnews_query": "Hollywood OR Bollywood OR Netflix OR box office OR celebrity",
+        "gnews_query": "entertainment OR Hollywood OR Bollywood OR streaming OR box office OR music OR celebrity OR film OR television OR OTT",
         "gnews_lang": "en",
         "rss_feeds": [
             "https://variety.com/feed/",

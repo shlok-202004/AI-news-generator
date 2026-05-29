@@ -96,10 +96,14 @@ def score_article(article: Article) -> float:
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def rank_and_select(articles: list[Article]) -> dict[str, list[Article]]:
+def rank_and_select(
+    articles: list[Article],
+    limit: int | None = TOP_ARTICLES_FOR_AI,
+) -> dict[str, list[Article]]:
     """
-    Group articles by category, score each one, sort descending,
-    and return the top TOP_ARTICLES_FOR_AI per category.
+    Group articles by category, score each one, and sort descending.
+    limit=N  → return top N per category (scheduled briefing default).
+    limit=None → return all ranked articles (used by /news slash command).
 
     Returns:
         {category_name: [Article, ...]}  — only categories with ≥1 article.
@@ -117,10 +121,10 @@ def rank_and_select(articles: list[Article]) -> dict[str, list[Article]]:
             continue
 
         scored = sorted(bucket, key=score_article, reverse=True)
-        top = scored[:TOP_ARTICLES_FOR_AI]
+        top = scored[:limit] if limit is not None else scored
 
         logger.info(
-            "Filter › %s: %d article(s) → top %d selected",
+            "Filter › %s: %d article(s) → %d selected",
             category, len(bucket), len(top),
         )
         selected[category] = top

@@ -51,11 +51,14 @@ logger = logging.getLogger(__name__)
 
 def _fetch_filter_scrape(
     category: str | None = None,
+    limit: int | None = None,
 ) -> tuple[dict, list]:
     """
     Steps 1-4: fetch → dedup → filter → scrape.
     Returns (selected_articles_by_category, all_unique_articles).
     If category is given, only that category is kept after filtering.
+    limit=None passes all ranked articles to AI (used by /news).
+    limit=N caps per category (used by the scheduled pipeline).
     """
     # Fetch
     gnews_articles = fetch_all_gnews()
@@ -75,7 +78,7 @@ def _fetch_filter_scrape(
         raise RuntimeError("All articles were duplicates — nothing new")
 
     # Filter & rank
-    selected = rank_and_select(unique)
+    selected = rank_and_select(unique, limit=limit)
     if not selected:
         raise RuntimeError("Filter returned empty selection")
 
@@ -104,12 +107,14 @@ def _fetch_filter_scrape(
     return selected, unique
 
 
-def build_sections(category: str | None = None) -> list[str]:
+def build_sections(category: str | None = None, limit: int | None = None) -> list[str]:
     """
     Run the pipeline up to AI generation and return briefing sections.
     Does NOT deliver or mark articles as seen — safe to call from the bot.
+    limit=None sends every fetched article to the AI (used by /news).
+    limit=N caps articles per category (used by the scheduler).
     """
-    selected, _ = _fetch_filter_scrape(category)
+    selected, _ = _fetch_filter_scrape(category, limit=limit)
     from config import AI_PROVIDER
     logger.info("Generating briefing with %s…", AI_PROVIDER.upper())
     return generate_briefing(selected)
@@ -135,7 +140,8 @@ def run_pipeline(dry_run: bool = False, deliver: bool = True) -> list[str]:
     start = datetime.now(ist)
     logger.info("━━━ Pipeline started at %s ━━━", start.strftime("%H:%M IST"))
 
-    selected, unique = _fetch_filter_scrape()
+    from config import TOP_ARTICLES_FOR_AI
+    selected, unique = _fetch_filter_scrape(limit=TOP_ARTICLES_FOR_AI)
 
     from config import AI_PROVIDER
     logger.info("Generating briefing with %s…", AI_PROVIDER.upper())
