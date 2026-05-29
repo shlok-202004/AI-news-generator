@@ -8,6 +8,7 @@ Commands:
     /unsubscribe category:X
     /mysubscriptions       — view your active subscriptions
     /stats                 — reaction engagement leaderboard
+    /digest                — weekly recap of recurring/trending stories
 """
 
 import asyncio
@@ -36,13 +37,15 @@ for noisy in ("httpx", "httpcore", "discord.gateway", "discord.client", "trafila
 
 logger = logging.getLogger(__name__)
 
-from config import DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID, DISCORD_GUILD_ID
+from config import DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID, DISCORD_GUILD_ID, CATEGORIES
 from delivery.discord_webhook import build_embeds
+from ai.summarizer import CATEGORY_EMOJIS
 from main import build_sections, run_pipeline
 from db.store import (
     init_tables,
     subscribe, unsubscribe, get_subscriptions, get_all_subscriptions,
     record_message, record_reaction, get_reaction_stats,
+    get_trending_stories,
 )
 
 if not DISCORD_BOT_TOKEN:
@@ -265,6 +268,48 @@ async def cmd_stats(interaction: discord.Interaction) -> None:
     await interaction.response.send_message(embed=embed)
 
 
+# ── /digest ────────────────────────────────────────────────────────────────────
+
+@tree.command(name="digest", description="Weekly recap of stories that kept trending")
+async def cmd_digest(interaction: discord.Interaction) -> None:
+    stories = get_trending_stories(days=7)
+    if not stories:
+        await interaction.response.send_message(
+            "No recurring stories this week yet — the digest builds up as daily "
+            "briefings track which stories keep returning.",
+            ephemeral=True,
+        )
+        return
+
+    # Group by category, preserving config order
+    by_category: dict[str, list[dict]] = {}
+    for s in stories:
+        by_category.setdefault(s["category"], []).append(s)
+
+    lines: list[str] = []
+    for category in CATEGORIES:
+        bucket = by_category.get(category)
+        if not bucket:
+            continue
+        emoji = CATEGORY_EMOJIS.get(category, "📰")
+        lines.append(f"\n{emoji} **{category}**")
+        for s in bucket:
+            lines.append(f"• {s['title']}  `×{s['appearance_count']}`")
+
+    description = ("Stories that kept coming back over the last 7 days "
+                  "(`×N` = days seen).\n" + "\n".join(lines))
+    if len(description) > 4096:
+        description = description[:4093] + "…"
+
+    embed = discord.Embed(
+        title="🔁 Weekly Digest",
+        description=description,
+        color=0x5865F2,
+        timestamp=datetime.datetime.now(IST),
+    )
+    await interaction.response.send_message(embed=embed)
+
+
 # ── Reaction tracking ──────────────────────────────────────────────────────────
 
 @client.event
@@ -292,10 +337,12 @@ async def daily_briefing() -> None:
 
     logger.info("Running scheduled daily briefing…")
     try:
-        # Run pipeline (fetch → scrape → trend → AI → webhook delivery → mark seen)
-        sections = await asyncio.to_thread(run_pipeline, False)
+        # Run pipeline (fetch → scrape → trend → AI → mark seen).
+        # deliver=False: the bot is the sole poster (with reactions) — avoids
+        # the webhook posting a duplicate copy to the same channel.
+        sections = await asyncio.to_thread(run_pipeline, False, False)
 
-        # Send with per-category reactions via bot (in addition to webhook)
+        # Send with per-category reactions via bot
         await _send_with_reactions(channel, sections)
 
         # Personalized DMs

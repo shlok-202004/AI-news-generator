@@ -1,5 +1,6 @@
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 
 import feedparser
@@ -8,6 +9,10 @@ from config import CATEGORIES, RSS_MAX_PER_FEED, MAX_AGE_HOURS
 from fetchers.gnews_fetcher import Article
 
 logger = logging.getLogger(__name__)
+
+# Parallel feed downloads — feedparser.parse() is a blocking network call,
+# so fetching feeds concurrently cuts wall-clock time on the slowest stage.
+_RSS_WORKERS = 8
 
 
 def _parse_rss_dt(entry: feedparser.FeedParserDict) -> datetime | None:
@@ -89,23 +94,21 @@ def fetch_rss_feed(feed_url: str, category: str) -> list[Article]:
     return articles
 
 
-def fetch_rss_for_category(category: str) -> list[Article]:
-    """Fetch all RSS feeds configured for a single category."""
-    cfg = CATEGORIES.get(category)
-    if not cfg:
-        logger.warning("fetch_rss_for_category: unknown category '%s'", category)
+def fetch_all_rss() -> list[Article]:
+    """Fetch RSS feeds for every configured category, in parallel."""
+    # Flatten every (feed_url, category) pair so feeds across all categories
+    # download concurrently rather than one category at a time.
+    tasks = [
+        (feed_url, category)
+        for category, cfg in CATEGORIES.items()
+        for feed_url in cfg.get("rss_feeds", [])
+    ]
+    if not tasks:
         return []
 
-    articles: list[Article] = []
-    for feed_url in cfg.get("rss_feeds", []):
-        articles.extend(fetch_rss_feed(feed_url, category))
-
-    return articles
-
-
-def fetch_all_rss() -> list[Article]:
-    """Fetch RSS feeds for every configured category."""
     all_articles: list[Article] = []
-    for category in CATEGORIES:
-        all_articles.extend(fetch_rss_for_category(category))
+    with ThreadPoolExecutor(max_workers=_RSS_WORKERS) as pool:
+        results = pool.map(lambda t: fetch_rss_feed(*t), tasks)
+        for articles in results:
+            all_articles.extend(articles)
     return all_articles

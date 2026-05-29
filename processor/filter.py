@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 _SOURCE_TIERS: list[tuple[int, list[str]]] = [
     (30, ["reuters", "bbc", "bloomberg", "ft.com", "financial times",
-          "associated press", "ap news", "the hindu", "indian express"]),
+          "associated press", "ap news", "the hindu", "indian express",
+          "cnbc", "guardian"]),
     (20, ["techcrunch", "wired", "ars technica", "the verge", "mit technology",
           "venture beat", "ndtv", "al jazeera", "variety", "deadline"]),
     (10, ["yahoo finance", "google news", "newsapi"]),

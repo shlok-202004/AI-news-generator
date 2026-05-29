@@ -18,7 +18,10 @@ env/
 # Logs & database
 logs/
 *.log
-db/
+# Ignore the SQLite files, but keep the db/ source code (db/store.py)
+db/*.db
+db/*.db-wal
+db/*.db-shm
 
 # Claude Code
 .claude/

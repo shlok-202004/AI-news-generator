@@ -58,7 +58,7 @@ CATEGORIES: dict[str, dict] = {
         "gnews_lang": "en",
         "rss_feeds": [
             "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US",
-            "https://feeds.reuters.com/reuters/businessNews",
+            "https://www.cnbc.com/id/100003114/device/rss/rss.html",
         ],
     },
     "Geopolitics": {
@@ -66,7 +66,7 @@ CATEGORIES: dict[str, dict] = {
         "gnews_lang": "en",
         "rss_feeds": [
             "http://feeds.bbci.co.uk/news/world/rss.xml",
-            "https://feeds.reuters.com/Reuters/worldNews",
+            "https://www.theguardian.com/world/rss",
             "https://www.aljazeera.com/xml/rss/all.xml",
         ],
     },

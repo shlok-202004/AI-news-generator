@@ -117,7 +117,7 @@ def build_sections(category: str | None = None) -> list[str]:
 
 # ── Full pipeline (scheduler entry point) ──────────────────────────────────────
 
-def run_pipeline(dry_run: bool = False) -> None:
+def run_pipeline(dry_run: bool = False, deliver: bool = True) -> list[str]:
     """
     Full pipeline:
       1. Fetch  — GNews + RSS for all categories
@@ -127,6 +127,9 @@ def run_pipeline(dry_run: bool = False) -> None:
       5. AI     — generate briefing
       6. Deliver — send to Discord (or stdout if dry_run)
       7. Commit  — mark articles as seen in SQLite
+
+    deliver=False skips the webhook send (used by the Discord bot, which posts
+    the briefing itself with reactions) while still generating and marking seen.
     """
     ist = timezone(timedelta(hours=5, minutes=30))
     start = datetime.now(ist)
@@ -139,8 +142,11 @@ def run_pipeline(dry_run: bool = False) -> None:
     sections = generate_briefing(selected)
     logger.info("Briefing: %d section(s) ready", len(sections))
 
-    logger.info("Delivering to Discord… (dry_run=%s)", dry_run)
-    send_briefing(sections, dry_run=dry_run)
+    if deliver:
+        logger.info("Delivering to Discord… (dry_run=%s)", dry_run)
+        send_briefing(sections, dry_run=dry_run)
+    else:
+        logger.info("Skipping webhook delivery (deliver=False)")
 
     # Only reached if delivery succeeded — guarantees retry on failure
     if not dry_run:
