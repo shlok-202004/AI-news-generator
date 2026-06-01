@@ -6,11 +6,10 @@ All features share the same seen_articles.db file.
 import logging
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
+
+from config import DB_PATH
 
 logger = logging.getLogger(__name__)
-
-DB_PATH = Path(__file__).resolve().parent.parent / "db" / "seen_articles.db"
 
 
 def _conn() -> sqlite3.Connection:
@@ -145,21 +144,27 @@ def get_reaction_stats() -> list[dict]:
 def upsert_story(title_hash: str, title: str, category: str) -> int:
     """
     Insert a new story or bump its appearance count.
-    Returns the updated count.
+    appearance_count tracks DISTINCT DAYS the story was seen, so repeat fetches
+    on the same day (e.g. multiple /news calls) don't inflate the count.
+    Returns the current count.
     """
     today = date.today().isoformat()
     with _conn() as c:
         existing = c.execute(
-            "SELECT appearance_count FROM story_history WHERE title_hash=?",
+            "SELECT appearance_count, last_seen FROM story_history WHERE title_hash=?",
             (title_hash,),
         ).fetchone()
 
         if existing:
-            count = existing["appearance_count"] + 1
-            c.execute(
-                "UPDATE story_history SET last_seen=?, appearance_count=? WHERE title_hash=?",
-                (today, count, title_hash),
-            )
+            if existing["last_seen"] < today:
+                count = existing["appearance_count"] + 1
+                c.execute(
+                    "UPDATE story_history SET last_seen=?, appearance_count=? WHERE title_hash=?",
+                    (today, count, title_hash),
+                )
+            else:
+                # Already counted today — return the existing count unchanged.
+                count = existing["appearance_count"]
         else:
             count = 1
             c.execute(

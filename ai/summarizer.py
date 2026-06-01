@@ -176,7 +176,7 @@ def _call_openrouter(user_prompt: str, system_prompt: str = _SYSTEM_PROMPT) -> s
             {"role": "user",   "content": user_prompt},
         ],
     )
-    text = response.choices[0].message.content.strip()
+    text = (response.choices[0].message.content or "").strip()
     logger.info("OpenRouter responded (%d chars, finish_reason=%s)",
                 len(text), response.choices[0].finish_reason)
     return text

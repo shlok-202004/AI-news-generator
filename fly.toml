@@ -1,0 +1,24 @@
+# fly.toml — Fly.io configuration for the Discord news bot
+# Docs: https://fly.io/docs/reference/configuration/
+
+app = "discord-news-bot"   # must be globally unique on Fly.io — change if the name is taken
+primary_region = "bom"     # Mumbai — closest Fly.io region to IST
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Pure worker process — no HTTP server, no inbound port, no health checks.
+# Fly.io supports worker machines natively; omitting [http_service] is correct here.
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Persistent volume for SQLite — survives redeploys and restarts.
+# Create once with: fly volumes create bot_data --region sin --size 1
+# Then set the secret:  fly secrets set DB_PATH=/data/seen_articles.db
+[[mounts]]
+  source = "bot_data"
+  destination = "/data"
+  initial_size = "1gb"

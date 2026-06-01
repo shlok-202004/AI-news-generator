@@ -99,10 +99,16 @@ def _to_discord_embeds(sections: list[str]) -> list[discord.Embed]:
 
 def _filter_sections(sections: list[str], categories: list[str]) -> list[str]:
     """Return only sections whose category matches the user's subscriptions."""
+    wanted = {c.lower() for c in categories}
     result = []
     for s in sections:
         m = _SECTION_RE.search(s)
-        if m and any(cat.lower() in m.group(1).lower() for cat in categories):
+        if not m:
+            continue
+        # Header is "{emoji} {CATEGORY NAME}" — strip the leading emoji/symbols
+        # and match the category name exactly, so "Tech" doesn't catch "EdTech".
+        name = re.sub(r"^[^A-Za-z]+", "", m.group(1)).strip().lower()
+        if name in wanted:
             result.append(s)
     return result
 

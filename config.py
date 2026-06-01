@@ -1,7 +1,13 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ── Database path ──────────────────────────────────────────────────────────────
+# Override with DB_PATH=/data/seen_articles.db in production (Fly.io volume).
+# Defaults to db/seen_articles.db next to this file for local development.
+DB_PATH = Path(os.getenv("DB_PATH", str(Path(__file__).parent / "db" / "seen_articles.db")))
 
 # ── Credentials ────────────────────────────────────────────────────────────────
 AI_PROVIDER           = os.getenv("AI_PROVIDER", "openrouter")

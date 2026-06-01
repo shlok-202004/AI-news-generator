@@ -1,0 +1,43 @@
+name: Daily News Briefing
+
+on:
+  schedule:
+    - cron: '30 2 * * *'  # 02:30 UTC = 08:00 IST every day
+  workflow_dispatch:        # also lets you trigger it manually from GitHub UI (useful from phone)
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore article history (SQLite dedup DB)
+        uses: actions/cache@v4
+        with:
+          path: db/seen_articles.db
+          # New key each run so the updated DB is always saved after a successful run.
+          # restore-keys prefix picks up the most recent previous snapshot.
+          key: seen-articles-${{ github.run_id }}
+          restore-keys: |
+            seen-articles-
+
+      - name: Run pipeline
+        env:
+          GNEWS_API_KEY:       ${{ secrets.GNEWS_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          AI_PROVIDER:         ${{ secrets.AI_PROVIDER }}
+          OPENROUTER_API_KEY:  ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_MODEL:    ${{ secrets.OPENROUTER_MODEL }}
+        run: python main.py

@@ -3,13 +3,11 @@ import logging
 import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
+from config import DB_PATH
 from fetchers.gnews_fetcher import Article
 
 logger = logging.getLogger(__name__)
-
-DB_PATH = Path(__file__).resolve().parent.parent / "db" / "seen_articles.db"
 
 # Articles stay in the seen-store for this many days before expiry
 SEEN_TTL_DAYS = 3

@@ -1,0 +1,32 @@
+# Secrets — never bake into the image; use fly secrets instead
+.env
+.env.local
+*.env
+
+# Local SQLite database — written at runtime to the Fly.io volume (/data)
+db/*.db
+db/*.db-shm
+db/*.db-wal
+
+# Runtime log files
+logs/
+
+# Python bytecode — avoids Windows-path .pyc files leaking into the Linux container
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git history
+.git/
+.gitignore
+
+# IDE / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code internals
+.claude/

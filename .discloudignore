@@ -1,0 +1,25 @@
+# Discloud ignore — note: NO wildcards supported (exact filenames only)
+
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__
+
+# Fly.io deployment files (not needed on Discloud)
+Dockerfile
+.dockerignore
+fly.toml
+
+# Local SQLite database (created fresh at runtime)
+seen_articles.db
+
+# Log files (created at runtime)
+logs
+
+# Claude Code internals
+.claude
+
+# Documentation
+README.md

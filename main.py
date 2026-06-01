@@ -65,7 +65,11 @@ def _fetch_filter_scrape(
     # serving /news Tech shouldn't fetch all 25 categories' feeds + GNews calls.
     from config import CATEGORIES
     if category:
-        cats = [k for k in CATEGORIES if category.lower() in k.lower()]
+        if category in CATEGORIES:
+            cats = [category]
+        else:
+            # Loose fallback for callers that pass a partial name
+            cats = [k for k in CATEGORIES if category.lower() in k.lower()]
         if not cats:
             raise ValueError(f"Category '{category}' not found or has no articles today")
     else:
@@ -110,7 +114,7 @@ def _fetch_filter_scrape(
 
     # Optional single-category filter (for slash commands)
     if category:
-        matched = next(
+        matched = category if category in selected else next(
             (k for k in selected if category.lower() in k.lower()), None
         )
         if not matched:

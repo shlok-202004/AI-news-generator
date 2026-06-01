@@ -10,7 +10,7 @@ import logging
 import re
 
 from fetchers.gnews_fetcher import Article
-from db.store import get_story_count, init_tables, purge_old_stories, upsert_story
+from db.store import init_tables, purge_old_stories, upsert_story
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +47,11 @@ def tag_trending(articles: list[Article]) -> list[Article]:
     updates  = 0
 
     for article in articles:
-        h          = _title_hash(article.title)
-        prev_count = get_story_count(h)
-        new_count  = upsert_story(h, article.title, article.category)
+        h         = _title_hash(article.title)
+        new_count = upsert_story(h, article.title, article.category)
 
-        if prev_count == 0:
-            continue  # brand-new story — no tag
+        if new_count <= 1:
+            continue  # first day seen — no tag (idempotent for same-day refetches)
 
         if new_count >= 3:
             tag      = f"[🔥 TRENDING — Day {new_count}] "
